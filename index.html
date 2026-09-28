@@ -175,6 +175,7 @@ code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-siz
 .plabel{font-size:12px;color:var(--text);background:rgba(10,20,25,.75);padding:2px 8px;border-radius:5px;white-space:nowrap}
 .plabel b{font-weight:600;color:var(--accent2)}
 .pbadge{position:absolute;right:-2px;top:-6px;font-size:11px;font-weight:600;color:var(--accent-ink);background:var(--accent);border-radius:9px;padding:0 5px;line-height:16px;z-index:2}
+.seat .card.up{box-shadow:0 0 0 1px rgba(255,240,210,.55),0 3px 8px rgba(0,0,0,.55)}
 .tnone{display:none}
 
 /* 내 정보 (하단) */
@@ -453,7 +454,7 @@ code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-siz
     <ul>
       <li>액션 마커를 가진 플레이어가 <b>다른 플레이어</b>의 카드 한 장 위에 마커를 올립니다.</li>
       <li>공개 전까지 모두 자유롭게 토론합니다. 마커 위치는 바꿀 수 있습니다.</li>
-      <li>최종 결정 후 카드를 공개해 테이블 가운데에 놓습니다. <b>공개된 카드는 다시 섞지 않습니다.</b></li>
+      <li>최종 결정 후 카드를 공개해 앞면이 보이게 그 자리에 둡니다. 라운드가 끝나면 공개된 카드를 모두 테이블 가운데로 모읍니다. <b>공개된 카드는 다시 섞지 않습니다.</b></li>
       <li>공개된 카드의 주인이 다음 액션 마커를 받습니다.</li>
       <li>진실을 말할 의무는 없습니다. <b>거짓말이 권장됩니다.</b></li>
     </ul>
@@ -485,7 +486,7 @@ code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-siz
     <p>8인 플레이 시, 누구의 카드를 공개했는지와 상관없이 마커를 가진 플레이어부터 <b>시계 방향으로</b> 한 번씩 액션하는 규칙을 적용할 수 있습니다(시작 전 전원 동의 필요).</p>
     <h4>확장 · 특수 카드</h4>
     <p>특수 카드 6장 중 5장을 무작위로 골라 <b>빈 상자 카드 대신</b> 탐험 카드 더미에 넣습니다. 남은 1장은 보지 않고 상자에 넣습니다. (예: 4인 → 특수 5, 빈 상자 10, 보물 상자 4, 크라켄 1)</p>
-    <p>탐색으로 특수 카드가 공개되면 능력이 발동합니다. <b>능력은 항상 그 카드를 가지고 있던 플레이어를 대상으로</b> 발동하고, 사용한 카드는 테이블 가운데에 놓습니다.</p>
+    <p>탐색으로 특수 카드가 공개되면 능력이 발동합니다. <b>능력은 항상 그 카드를 가지고 있던 플레이어를 대상으로</b> 발동하고, 사용한 카드는 다른 공개 카드처럼 라운드가 끝나면 테이블 가운데로 모읍니다.</p>
     <div class="cardrow" id="rulesSpecials"></div>
     <ul>
       <li><b>사라진 보물</b>: 테이블 가운데에 있는 보물 상자 카드 1장을 임시 탐험 카드 더미에 되돌립니다.</li>
@@ -1282,8 +1283,11 @@ function applyReveal(g, ownerId, idx){
   if(!hand || idx<0 || idx>=hand.length) return g;
   g.justRedealt = false;
   const investigator = g.marker;
+  // 공개한 카드는 라운드가 끝날 때까지 그 자리에 앞면으로 남는다: 줄 안의 자리 번호를 기억
+  const taken = g.revealed.filter(r=>r.owner===ownerId && r.round===g.round && r.slot!=null).map(r=>r.slot);
+  let slot=0; for(let cnt=-1;;slot++){ if(taken.includes(slot)) continue; if(++cnt===idx) break; }
   const type = hand.splice(idx,1)[0];
-  const rec = { type, owner:ownerId, round:g.round };
+  const rec = { type, owner:ownerId, round:g.round, slot };
   g.revealed.push(rec);
   g.actions++;
   g.pending = null;
@@ -1306,7 +1310,7 @@ function applyReveal(g, ownerId, idx){
   const who = pname(g, ownerId);
   switch(type){
     case 'lost': {
-      let k=-1; for(let i=g.revealed.length-1;i>=0;i--) if(g.revealed[i].type==='treasure'){ k=i; break; }
+      let k=-1; for(let i=g.revealed.length-1;i>=0;i--) if(g.revealed[i].type==='treasure' && g.revealed[i].round<g.round){ k=i; break; }  // 가운데(지난 라운드) 보물만
       if(k>=0){ g.revealed.splice(k,1); g.temp.push('treasure'); g.log=`사라진 보물: 가운데 보물 상자 1장이 임시 더미로 돌아갑니다.`; }
       else g.log=`사라진 보물: 가운데에 보물 상자가 없습니다.`;
       break;
@@ -1540,7 +1544,7 @@ function renderTable(){
   if(g.phase==='over'){
     aa.innerHTML='';
   } else if(g.frozen){
-    aa.innerHTML = `<button class="btn grn" onclick="startNextRound()">🃏 카드 섞어 나누고 라운드 ${g.round} 시작</button>`;
+    aa.innerHTML = `<button class="btn grn" onclick="startNextRound()">카드 섞어 나누고 라운드 ${g.round} 시작</button>`;
   } else if(isMyTurn && g.pending){
     aa.innerHTML = `<div class="btn-row">
       <button class="btn ghost" style="flex:.45" onclick="cancelPick()">취소</button>
@@ -1615,9 +1619,23 @@ function seatsLayout(g, me, isMyTurn, lighting, W, H, k){
     const x=cx+a*Math.cos(th), y=cy+b*Math.sin(th);
     const hand=g.hands[p.id]||[];
     const hasMk=p.id===g.marker;
+    // 이번 라운드에 공개된 카드는 라운드가 끝날 때까지 주인 앞에 앞면으로 놓여 있다
+    const upCards=g.revealed.map((r,ri)=>({r,ri})).filter(o=>o.r.owner===p.id && o.r.round===g.round)
+      .sort((x,y)=>(x.r.slot??99)-(y.r.slot??99));
+    const rowLen=hand.length+upCards.length;
+    // 자리 순서대로: 공개된 카드는 원래 자리, 나머지 자리는 뒷면 카드
+    const row=[]; { let hi=0, ui=0;
+      for(let pos=0; row.length<rowLen; pos++){
+        if(ui<upCards.length && (upCards[ui].r.slot===pos || hi>=hand.length)) row.push({up:upCards[ui++]});
+        else row.push({hi:hi++});
+      } }
     let cards='';
-    if(!hand.length) cards=`<div class="nocard">남은 카드 없음</div>`;
-    hand.forEach((c,ci)=>{
+    if(!rowLen) cards=`<div class="nocard">남은 카드 없음</div>`;
+    row.forEach(cell=>{
+      if(cell.up){ const o=cell.up;
+        cards += `<div class="card up ${o.ri===g.revealed.length-1?'flipin':''}" style="width:${cw}px;height:${ch}px">${artImg(o.r.type)}</div>`;
+        return; }
+      const ci=cell.hi, c=hand[ci];
       const canPick = isMyTurn && !hasMk;
       const marked = g.pending && g.pending.owner===p.id && g.pending.idx===ci;
       const lit = g.peek && g.peek.owner===p.id && g.peek.idx===ci;
@@ -1628,7 +1646,7 @@ function seatsLayout(g, me, isMyTurn, lighting, W, H, k){
     });
     html+=`<div class="seat ${hasMk?'hasmk':''}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;transform:rotate(${rot.toFixed(1)}deg)"><div class="srow" style="gap:${gap}px">${cards}</div></div>`;
     // 이름표: 위아래 자리는 테이블 안쪽, 옆자리는 카드 줄 위쪽
-    const len = hand.length ? hand.length*cw+(hand.length-1)*gap : 80;
+    const len = rowLen ? rowLen*cw+(rowLen-1)*gap : 80;
     const r=rot*Math.PI/180, c=Math.abs(Math.cos(r)), s=Math.abs(Math.sin(r));
     const hx=(len*c+ch*s)/2, hy=(len*s+ch*c)/2;
     const showMk = hasMk && !(g.pending);
@@ -1649,16 +1667,17 @@ function seatsLayout(g, me, isMyTurn, lighting, W, H, k){
     const vert=false;
     tags.push({x:tx,y:ty,w:tW,h:tH});
     // 카드 줄도 장애물로 (카드 한 장씩)
-    for(let ci=0; ci<hand.length; ci++){
-      const off=(ci-(hand.length-1)/2)*(cw+gap);
+    for(let ci=0; ci<rowLen; ci++){
+      const off=(ci-(rowLen-1)/2)*(cw+gap);
       obs.push({x:x+Math.cos(r)*off, y:y+Math.sin(r)*off, w:Math.max(cw,ch)+8, h:Math.max(cw,ch)+8});
     }
     html+=`<div class="stag ${vert?'v':''} ${hasMk?'mk':''} ${p.id===me?'me':''}" style="left:${tx.toFixed(1)}px;top:${ty.toFixed(1)}px">${showMk?artImg('marker'):''}${MODE==='online'?`<span class="pdot ${presCls(p.id)}" data-pid="${p.id}"></span>`:''}<span>${esc(p.name)}${p.id===me&&!vert?' (나)':''}</span></div>`;
     SEATPOS[p.id]={x:tx,y:ty};
   });
   // 가운데: 공개된 카드 더미
-  const rev=g.revealed.map((r,i)=>({type:r.type,i}));
-  const last=rev.length-1;
+  // 가운데 더미: 지난 라운드까지 공개된 카드 (라운드가 끝나야 가운데로 모인다)
+  const rev=g.revealed.map((r,i)=>({type:r.type,i,round:r.round})).filter(r=>!(r.round>=g.round));
+  const last=-1;
   const tre=rev.filter(r=>r.type==='treasure'||r.type==='curse');
   const emp=rev.filter(r=>r.type==='empty');
   const kr=rev.filter(r=>r.type==='kraken');
