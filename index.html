@@ -1447,7 +1447,20 @@ function secretBlock(p){
 function showSecret(){
   const p = G.players[G.checkIdx];
   $('passBody').innerHTML = secretBlock(p) +
-    `<button class="btn sec" onclick="nextPass()">다음 사람</button>`;
+    `<button class="btn sec" onclick="hideSecret()">가리기</button>`;
+}
+/* 본 뒤 먼저 가리고, 그다음에 기기를 넘기게 하는 단계 */
+function hideSecret(){
+  const cur = G.players[G.checkIdx];
+  const nxt = G.players[G.checkIdx+1];
+  $('passBody').innerHTML = `
+    <div class="kicker">${esc(cur.name)} 확인 완료</div>
+    <div class="rolecard" style="margin-top:22px">${cardHTML('back')}</div>
+    ${nxt
+      ? `<div class="msg on-sea">다음은 <b>${esc(nxt.name)}</b>. 기기를 넘겨주세요.</div>
+         <button class="btn" onclick="nextPass()">${esc(nxt.name)}에게 넘겼어요</button>`
+      : `<div class="msg on-sea">모두 확인했습니다.</div>
+         <button class="btn" onclick="nextPass()">${G.round===1?'게임 시작':'라운드 '+G.round+' 시작'}</button>`}`;
 }
 function nextPass(){
   G.checkIdx++;
@@ -2120,6 +2133,7 @@ function enterRoom(code){
   if(ON.unsub) ON.ref.off('value', ON.unsub);
   ON.lastRk=undefined; ON.idSeen=null;
   ON.unsub = ON.ref.on('value', snap=>{
+    if(ON.code!==code) return;   // 이미 나간 방의 늦게 도착한 소식은 무시
     const room = snap.val();
     if(!room){ toast('방이 사라졌습니다'); leaveRoom(); return; }
     ON.room = room;
