@@ -165,8 +165,25 @@ code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-siz
 .stag span{overflow:hidden;text-overflow:ellipsis}
 .stag.me{box-shadow:inset 0 0 0 1px var(--teal)}
 .stag.mk{background:var(--accent);color:var(--accent-ink);font-weight:600}
-.table.big .stag{font-size:14px;max-width:140px;padding:4px 11px}.table.big .plabel{font-size:13.5px}
+.table.big .stag{font-size:14px;padding:4px 11px}.table.big .plabel{font-size:13.5px}
 @media (min-width:900px){.logline{text-align:center;font-size:13.5px}.ledger{font-size:13px}}
+.stag{max-width:none}
+.stag>span:not(.claim):not(.pdot){max-width:96px}
+.table.big .stag>span:not(.claim):not(.pdot){max-width:124px}
+.stag .claim{flex:0 0 auto;margin-left:3px;font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(226,194,131,.2);color:var(--accent2)}
+.stag.mk .claim{background:rgba(0,0,0,.18);color:var(--accent-ink)}
+.stag .claim.kr{background:rgba(200,80,70,.3);color:#f3c2b8}
+.table.big .stag .claim{font-size:12.5px}
+.claimbox{margin-top:14px;padding:14px;border-radius:10px;background:rgba(10,20,25,.55);border:1px solid var(--line);text-align:center}
+.dock .claimbox{margin-top:0;padding:10px 12px}
+.claimbox .ctitle{font-size:14.5px;font-weight:600;color:var(--text)}
+.claimbox .csub{font-size:12px;color:var(--muted);margin:3px 0 10px}
+.claimrow{display:flex;gap:6px;justify-content:center;margin-bottom:8px}
+.cbtn{min-width:40px;height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--text);font-family:var(--ui);font-size:15px;font-weight:600;cursor:pointer}
+.cbtn.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cbtn.kr{font-size:13px;font-weight:500;height:34px}
+.cbtn.kr.on{background:#b5524a;border-color:#b5524a;color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
 .stag img{width:18px;height:18px;flex:0 0 18px;margin:-2px 0 -2px -5px}
 .tcenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:14px;align-items:flex-end;justify-content:center;z-index:1}
 .pile{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative}
@@ -449,6 +466,7 @@ code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-siz
       <tr><td>5</td><td>19</td><td>5</td><td>1</td></tr><tr><td>6</td><td>23</td><td>6</td><td>1</td></tr>
       <tr><td>7</td><td>27</td><td>7</td><td>1</td></tr><tr><td>8</td><td>31</td><td>8</td><td>1</td></tr></table>
     <p><b>중요:</b> 받은 카드의 구성(빈 상자 몇 장, 보물 몇 장, 크라켄 유무)은 알 수 있지만, <b>다시 잘 섞어 놓기 때문에 어떤 카드가 어디 있는지는 본인도 모릅니다.</b></p>
+    <p>라운드를 시작할 때 각자 자기 카드를 보고 <b>보물 상자가 몇 개 있는지</b>(크라켄이 있는지) 모두에게 말합니다. 사실대로 말하지 않아도 됩니다. 이 앱에서는 말한 내용이 이름표 옆에 표시됩니다.</p>
 
     <h4>액션</h4>
     <ul>
@@ -1203,6 +1221,7 @@ function newGame(players, opts, tokens){
     checkIdx: 0,
     result: null,
     obsessed: null, peek: null, identity: null, lightBy: null, log: null,
+    claims: {},                // 라운드마다 "보물 몇 개" 말한 내용 {id:{t,k,r}}
     gid: Math.random().toString(36).slice(2,8),   // 판마다 다른 번호
     tokens: tokens || Object.fromEntries(players.map(p=>[p.id,0])),
     seq: 0
@@ -1418,6 +1437,62 @@ function handChips(hand){
     .map(k=>`<div class="hchip">${artImg(k)}${CARD_NAME[k]} <b>${cnt[k]}</b></div>`).join('');
   return chips || `<div class="hchip" style="padding:6px 10px">카드 없음</div>`;
 }
+/* ---------- 라운드 시작 때 "보물 몇 개" 말하기 ---------- */
+function claimOf(g,id){ const c=g.claims&&g.claims[id]; return (c && c.r===g.round) ? c : null; }
+/* 온라인: 첫 탐색 전, 아직 말하지 않은 사람 */
+function claimWaiting(g){
+  if(MODE!=='online' || g.phase!=='play' || g.frozen || g.actions>0 || g.claimSkip===g.round) return [];
+  // 연결이 끊긴 사람은 기다리지 않음
+  const gone=id=>id!==ON.uid && typeof presCls==='function' && ['stale','off'].includes(presCls(id));
+  return g.players.filter(p=>!claimOf(g,p.id) && !gone(p.id)).map(p=>p.id);
+}
+let CLAIM_DRAFT=null;
+function claimPickerHTML(handLen){
+  const d=CLAIM_DRAFT||{};
+  let s='<div class="claimrow">';
+  for(let i=0;i<=handLen;i++) s+=`<button class="cbtn ${d.t===i?'on':''}" onclick="claimSet(${i})">${i}</button>`;
+  s+=`</div><button class="cbtn kr ${d.k?'on':''}" onclick="claimSet('k')">크라켄도 있다고 말하기</button>`;
+  return s;
+}
+function claimBoxHTML(handLen, local, muted){
+  if(muted){
+    CLAIM_DRAFT={t:null, k:false, mute:true};
+    return `<div class="claimbox" id="claimBox">
+      <div class="ctitle">스켈레톤의 움켜쥠</div>
+      <div class="csub" style="margin-bottom:${local?0:10}px">이 카드가 공개되기 전까지 아무 말도 할 수 없습니다.</div>
+      ${local?'':`<button class="btn" id="claimGo" onclick="claimSubmit()">확인</button>`}
+    </div>`;
+  }
+  return `<div class="claimbox" id="claimBox">
+    <div class="ctitle">보물 상자가 몇 개 있다고 말할까요?</div>
+    <div class="csub">모두에게 보입니다. 사실대로 말하지 않아도 됩니다.</div>
+    ${claimPickerHTML(handLen)}
+    ${local?'':`<button class="btn" id="claimGo" style="margin-top:10px" ${CLAIM_DRAFT&&CLAIM_DRAFT.t!=null?'':'disabled'} onclick="claimSubmit()">말하기</button>`}
+  </div>`;
+}
+function claimSet(v){
+  CLAIM_DRAFT = CLAIM_DRAFT || {t:null,k:false};
+  if(v==='k') CLAIM_DRAFT.k=!CLAIM_DRAFT.k; else CLAIM_DRAFT.t=v;
+  const box=$('claimBox'); if(!box) return;
+  const len = box.querySelectorAll('.claimrow .cbtn').length-1;
+  box.outerHTML = claimBoxHTML(len, MODE==='local', false);
+  const hb=$('hideBtn'); if(hb) hb.disabled = CLAIM_DRAFT.t==null;
+}
+function claimSubmit(){
+  if(MODE!=='online' || !CLAIM_DRAFT || (CLAIM_DRAFT.t==null && !CLAIM_DRAFT.mute) || !G) return;
+  const c=CLAIM_DRAFT.mute ? {mute:true, r:G.round} : {t:CLAIM_DRAFT.t, k:!!CLAIM_DRAFT.k, r:G.round};
+  CLAIM_DRAFT=null;
+  ON.ref.child('game/claims/'+ON.uid).set(c);
+}
+function claimSkip(){
+  if(MODE!=='online' || !G) return;
+  ON.ref.child('game/claimSkip').set(G.round);
+}
+function claimTagHTML(c){
+  if(!c) return '';
+  if(c.mute) return `<span class="claim">말 못함</span>`;
+  return `<span class="claim">보물 ${c.t}</span>${c.k?'<span class="claim kr">크라켄</span>':''}`;
+}
 function graspWarn(hand){
   return (hand||[]).includes('grasp')
     ? `<div class="warn" style="margin-top:10px"><b>스켈레톤의 움켜쥠</b> 보유<br>이 카드가 공개될 때까지 말하거나 몸짓을 할 수 없습니다.</div>` : '';
@@ -1453,12 +1528,19 @@ function secretBlock(p){
 }
 function showSecret(){
   const p = G.players[G.checkIdx];
-  $('passBody').innerHTML = secretBlock(p) +
-    `<button class="btn sec" onclick="hideSecret()">가리기</button>`;
+  const c = claimOf(G, p.id);
+  CLAIM_DRAFT = c ? {t:c.t, k:c.k} : null;
+  const hand = G.hands[p.id]||[];
+  $('passBody').innerHTML = secretBlock(p) + claimBoxHTML(hand.length, true, hand.includes('grasp')) +
+    `<button class="btn sec" id="hideBtn" ${CLAIM_DRAFT?'':'disabled'} onclick="hideSecret()">가리기</button>`;
 }
 /* 본 뒤 먼저 가리고, 그다음에 기기를 넘기게 하는 단계 */
 function hideSecret(){
   const cur = G.players[G.checkIdx];
+  if(!CLAIM_DRAFT || (CLAIM_DRAFT.t==null && !CLAIM_DRAFT.mute)) return;
+  G.claims = G.claims || {};
+  G.claims[cur.id] = CLAIM_DRAFT.mute ? {mute:true, r:G.round} : {t:CLAIM_DRAFT.t, k:!!CLAIM_DRAFT.k, r:G.round};
+  CLAIM_DRAFT = null;
   const nxt = G.players[G.checkIdx+1];
   $('passBody').innerHTML = `
     <div class="kicker">${esc(cur.name)} 확인 완료</div>
@@ -1497,6 +1579,8 @@ function renderTable(){
   const markerName = g.players.find(p=>p.id===g.marker)?.name || '';
   const tk = (MODE==='online' && ON.takeover) ? ON.takeover : null;   // 끊긴 사람 대신 진행 중
   const isMyTurn = !g.frozen && g.phase==='play' && ((MODE==='local') || (g.marker===me) || (tk && tk===g.marker));
+  const waiting = claimWaiting(g);            // 온라인: 말하기가 끝나야 첫 탐색
+  const needClaim = MODE==='online' && waiting.includes(me);
   const lighting = !g.frozen && g.phase==='light' && ((MODE==='local') || (g.lightBy===me) || (tk && tk===g.lightBy));
   const left = g.n - g.actions;
 
@@ -1545,6 +1629,10 @@ function renderTable(){
     aa.innerHTML='';
   } else if(g.frozen){
     aa.innerHTML = `<button class="btn grn" onclick="startNextRound()">카드 섞어 나누고 라운드 ${g.round} 시작</button>`;
+  } else if(needClaim){
+    aa.innerHTML = claimBoxHTML((g.hands[me]||[]).length, false, (g.hands[me]||[]).includes('grasp'));
+  } else if(isMyTurn && waiting.length){
+    aa.innerHTML = `<div class="stalebar" style="color:var(--muted)"><span>말하기를 기다리는 중: ${waiting.map(id=>esc(pname(g,id))).join(', ')}</span><button class="btn mini ghost" onclick="claimSkip()">기다리지 않기</button></div>`;
   } else if(isMyTurn && g.pending){
     aa.innerHTML = `<div class="btn-row">
       <button class="btn ghost" style="flex:.45" onclick="cancelPick()">취소</button>
@@ -1559,7 +1647,7 @@ function renderTable(){
   } else aa.innerHTML='';
 
   renderMyBar();
-  renderSeats(g, me, isMyTurn, lighting);   // 위아래 줄이 다 그려진 뒤 테이블 크기를 재서 배치
+  renderSeats(g, me, isMyTurn && !waiting.length, lighting);   // 위아래 줄이 다 그려진 뒤 테이블 크기를 재서 배치
   if(typeof paintChatLock==='function') paintChatLock();
 }
 
@@ -1651,7 +1739,8 @@ function seatsLayout(g, me, isMyTurn, lighting, W, H, k){
     const hx=(len*c+ch*s)/2, hy=(len*s+ch*c)/2;
     const showMk = hasMk && !(g.pending);
     const nm=[...p.name].length+(p.id===me?4:0);
-    const tW=big?Math.min(140, nm*16.5+26+(showMk?20:0)):Math.min(108, nm*15+22+(showMk?20:0)), tH=big?29:26;
+    const cl=claimOf(g,p.id), clW=cl?(cl.mute?(big?62:56):(big?58:52)+(cl.k?(big?52:48):0)):0;
+    const tW=(big?Math.min(140, nm*16.5+26+(showMk?20:0)):Math.min(108, nm*15+22+(showMk?20:0)))+clW, tH=big?29:26;
     const cands=[];
     if(c>=0.69){
       cands.push([Math.min(W-58, Math.max(58, x)), y + (y>cy ? -(hy+15) : (hy+15))]);
@@ -1671,7 +1760,7 @@ function seatsLayout(g, me, isMyTurn, lighting, W, H, k){
       const off=(ci-(rowLen-1)/2)*(cw+gap);
       obs.push({x:x+Math.cos(r)*off, y:y+Math.sin(r)*off, w:Math.max(cw,ch)+8, h:Math.max(cw,ch)+8});
     }
-    html+=`<div class="stag ${vert?'v':''} ${hasMk?'mk':''} ${p.id===me?'me':''}" style="left:${tx.toFixed(1)}px;top:${ty.toFixed(1)}px">${showMk?artImg('marker'):''}${MODE==='online'?`<span class="pdot ${presCls(p.id)}" data-pid="${p.id}"></span>`:''}<span>${esc(p.name)}${p.id===me&&!vert?' (나)':''}</span></div>`;
+    html+=`<div class="stag ${vert?'v':''} ${hasMk?'mk':''} ${p.id===me?'me':''}" style="left:${tx.toFixed(1)}px;top:${ty.toFixed(1)}px">${showMk?artImg('marker'):''}${MODE==='online'?`<span class="pdot ${presCls(p.id)}" data-pid="${p.id}"></span>`:''}<span>${esc(p.name)}${p.id===me&&!vert?' (나)':''}</span>${claimTagHTML(cl)}</div>`;
     SEATPOS[p.id]={x:tx,y:ty};
   });
   // 가운데: 공개된 카드 더미
@@ -2513,6 +2602,7 @@ function hydrate(raw){
   g.hands = g.hands || {};
   (g.players||[]).forEach(p=>{ if(!Array.isArray(g.hands[p.id])) g.hands[p.id] = g.hands[p.id] ? Object.values(g.hands[p.id]) : []; });
   g.tokens = g.tokens || {};
+  g.claims = g.claims || {};
   g.opts = g.opts || {};
   g.n = (g.players||[]).length;
   return g;
